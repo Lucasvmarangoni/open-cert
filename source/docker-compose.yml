@@ -1,0 +1,232 @@
+networks:
+  ce:
+    driver: bridge
+
+volumes:
+  roach1:
+  roach2:
+  roach3:
+
+secrets:
+  rabbitmq_pass:
+    file: ./secrets/rabbitmq_pass.txt
+  rabbitmq_erlang_cookie:
+    file: ./secrets/rabbitmq_erlang_cookie.txt
+  database_password:
+    file: ./secrets/database_password.txt
+  jwt_secret:
+    file: ./secrets/jwt_secret.txt
+  authz_admin_1:
+    file: ./secrets/authz_admin_1.txt
+  authz_read_1:
+    file: ./secrets/authz_read_1.txt
+  authz_max_admin:
+    file: ./secrets/authz_max_admin.txt
+  authz_max_read:
+    file: ./secrets/authz_max_read.txt
+  security_aes_key:
+    file: ./secrets/security_aes_key.txt
+  password_redis:
+    file: ./secrets/password_redis.txt
+
+services:
+
+  app-users:
+    container_name: ce-0
+    build:
+      context: ./
+      dockerfile: internal/modules/users/Dockerfile
+    image: app-users
+    ports:
+      - 8000:8000
+    restart: always
+    networks:
+      - ce
+    # security_opt:
+    #   - no-new-privileges
+    # cap_drop:
+    #   - all
+    depends_on:
+      - rabbit
+      - memcached-1
+      - roach1
+      - roach2
+      - roach3
+    environment:
+      CONCURRENCY_CREATE_MANAGEMENT: ${CONCURRENCY_CREATE_MANAGEMENT}
+      RABBITMQ_USER: ${RABBITMQ_USER}
+      RABBITMQ_HOST: ${RABBITMQ_HOST}
+      RABBITMQ_PORT: ${RABBITMQ_PORT}
+      RABBITMQ_VHOST: ${RABBITMQ_VHOST}
+      RABBITMQ_CONSUMER: ${RABBITMQ_CONSUMER}
+      RABBITMQ_QUEUE: ${RABBITMQ_QUEUE}
+      RABBITMQ_EXCHANGE: ${RABBITMQ_EXCHANGE}
+      RABBITMQ_DLX: ${RABBITMQ_DLX}
+      RABBITMQ_QUEUE_USER: ${RABBITMQ_QUEUE_USER}
+      RABBITMQ_ROUTINGKEY_USERCREATE: ${RABBITMQ_ROUTINGKEY_USERCREATE}
+      RABBITMQ_ROUTINGKEY_USERCREATERETURN: ${RABBITMQ_ROUTINGKEY_USERCREATERETURN}
+      DATABASE_USER: ${DATABASE_USER}
+      DATABASE_PORT: ${DATABASE_PORT}
+      DATABASE_NAME: ${DATABASE_NAME}
+      DATABASE_SSL_MODE: ${DATABASE_SSL_MODE}
+      DATABASE_SYM_ENCRYPT: ${DATABASE_SYM_ENCRYPT}
+      JWT_EXPIREDIN: ${JWT_EXPIREDIN}
+      JWT_SECRET: /run/secrets/jwt_secret
+      AUTHZ_ADMIN_1: /run/secrets/authz_admin_1
+      AUTHZ_READ_1: /run/secrets/authz_read_1
+      AUTHZ_MAX_ADMIN: /run/secrets/authz_max_admin
+      AUTHZ_MAX_READ: /run/secrets/authz_max_read
+      RABBITMQ_PASS: /run/secrets/rabbitmq_pass
+      DATABASE_PASSWORD: /run/secrets/database_password
+      SECURITY_AES_KEY: /run/secrets/security_aes_key
+      PASSWORD_REDIS: ${PASSWORD_REDIS}
+    secrets:
+      - rabbitmq_pass
+      - database_password
+      - jwt_secret
+      - authz_admin_1
+      - authz_read_1
+      - authz_max_admin
+      - authz_max_read
+      - security_aes_key
+      - password_redis
+    volumes:
+      - ./api:/app/api
+      - ./cmd:/app/cmd
+      - ./internal:/app/internal
+      - ./config:/app/config
+      - ./pkg:/app/pkg
+      - ./test:/app/test
+      - ./logs:/app/logs
+      - ./go.mod:/app/go.mod
+      - ./go.sum:/app/go.sum
+    command: go run cmd/server.go
+
+  roach1:
+      image: cockroachdb/cockroach:v24.3.3
+      container_name: roach1
+      hostname: roach1
+      environment:
+        COCKROACH_CHANNEL: stable
+        COCKROACH_DATABASE: ${DATABASE_NAME}
+        COCKROACH_USER: ${DATABASE_USER}
+        COCKROACH_PASSWORD: /run/secrets/database_password
+      secrets:
+        - database_password
+      ports:
+        - "26257:26257"
+        - "8080:8080"
+      volumes:
+        - "roach1:/cockroach/cockroach-data"
+      networks:
+        - ce     
+      command: >
+        start --advertise-addr=roach1:26357 --http-addr=roach1:8080 --listen-addr=roach1:26357 --sql-addr=roach1:26257 --insecure --join=roach1:26357,roach2:26357,roach3:26357 
+
+  roach2:
+    image: cockroachdb/cockroach:v24.3.3
+    container_name: roach2
+    hostname: roach2
+    environment:
+      COCKROACH_CHANNEL: stable
+      COCKROACH_DATABASE: ${DATABASE_NAME}
+      COCKROACH_USER: ${DATABASE_USER}
+      COCKROACH_PASSWORD: /run/secrets/database_password
+    secrets:
+      - database_password
+    ports:
+      - "26258:26258"
+      - "8081:8081"
+    volumes:
+      - "roach2:/cockroach/cockroach-data"
+    networks:
+      - ce    
+    command: >
+      start --advertise-addr=roach2:26357 --http-addr=roach2:8081 --listen-addr=roach2:26357 --sql-addr=roach2:26258 --insecure --join=roach1:26357,roach2:26357,roach3:26357
+
+  roach3:
+    image: cockroachdb/cockroach:v24.3.3
+    container_name: roach3
+    hostname: roach3
+    environment:
+      COCKROACH_CHANNEL: stable
+      COCKROACH_DATABASE: ${DATABASE_NAME}
+      COCKROACH_USER: ${DATABASE_USER}
+      COCKROACH_PASSWORD: /run/secrets/database_password
+    secrets:
+      - database_password
+    ports:
+      - "26259:26259"
+      - "8082:8082"
+    volumes:
+      - "roach3:/cockroach/cockroach-data"
+    networks:
+      - ce   
+    command: >
+      start --advertise-addr=roach3:26357 --http-addr=roach3:8082 --listen-addr=roach3:26357 --sql-addr=roach3:26259 --insecure --join=roach1:26357,roach2:26357,roach3:26357
+
+  rabbit:
+    image: rabbitmq:3-management@sha256:6f4ecd26acdac1e58d50928d12926e6a04f0dccb76d772f278243d85fb57e7a9
+    # build: 
+    #   context: ./docker/rabbitmq/
+    #   dockerfile: Dockerfile    
+    environment:
+      RABBITMQ_ERLANG_COOKIE: ${RABBITMQ_ERLANG_COOKIE}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+      RABBITMQ_DEFAULT_VHOST: ${RABBITMQ_VHOST}
+    secrets:
+      - rabbitmq_erlang_cookie
+      - rabbitmq_pass
+    ports:
+      - "15672:15672"
+      - "5672:5672"
+    restart: always
+    networks:
+      - ce
+    # entrypoint: ["/bin/sh", "-c", "/docker/rabbitmq/rabbitmq-entrypoint.sh"]
+    # security_opt:
+    #   - no-new-privileges
+
+  memcached-1:
+    build:
+      context: ./docker/memcached/
+      dockerfile: Dockerfile
+    ports:
+      - "11211:11211"
+    restart: always
+    networks:
+      - ce
+    security_opt:
+      - no-new-privileges
+    cap_drop:
+      - all
+    command:
+      - memcached
+      - -m 64
+
+  # memcached-2:
+  #   image: memcached:latest
+  #   ports:
+  #     - "11212:11211"
+  #   restart: always
+  #   networks:
+  #     - ce
+  #   command:
+  #     - memcached
+  #     - -m 64
+
+  redis:
+    image: redis@sha256:fb534a36ac2034a6374933467d971fbcbfa5d213805507f560d564851a720355
+    ports:
+      - "6379:6379"
+    networks:
+      - ce
+    security_opt:
+      - no-new-privileges
+    restart: always
+    environment:
+      PASSWORD_REDIS: ${PASSWORD_REDIS}
+    secrets:
+      - password_redis
+    command: [ "redis-server", "--requirepass", "${PASSWORD_REDIS}" ]
