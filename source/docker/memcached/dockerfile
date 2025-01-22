@@ -1,0 +1,2 @@
+FROM memcached@sha256:1a3bf68d60a62d1f1d0f1308c28d46fe243598b94f73f526e339e3fa16f3c957 AS memcached
+
