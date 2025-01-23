@@ -4,6 +4,7 @@ import (
 	"certifications/internal/modules/users/domain/entities"
 	pkg_entities "certifications/pkg/entities"
 	"context"
+
 	"github.com/cockroachdb/cockroach-go/v2/crdb/crdbpgxv5"
 
 	"github.com/Lucasvmarangoni/logella/err"
@@ -14,7 +15,6 @@ type UserRepository interface {
 	Insert(user *entities.User, ctx context.Context) error
 	FindByEmail(email string, ctx context.Context) (*entities.User, error)
 	FindById(id pkg_entities.ID, ctx context.Context) (*entities.User, error)
-	FindByCpf(cpf string, ctx context.Context) (*entities.User, error)
 	Update(user *entities.User, ctx context.Context) error
 	UpdateOTP(user *entities.User, ctx context.Context) error
 	UpdateOTPVerify(user *entities.User, ctx context.Context) error
@@ -70,6 +70,8 @@ func (r *UserRepositoryDb) Insert(user *entities.User, ctx context.Context) erro
 }
 
 func (r *UserRepositoryDb) FindById(id pkg_entities.ID, ctx context.Context) (*entities.User, error) {
+	var lastNameBytes, cpfBytes, emailBytes []byte
+
 	sql := `SELECT * FROM users WHERE id = $1`
 	var row pgx.Row
 	user := &entities.User{}
@@ -78,9 +80,9 @@ func (r *UserRepositoryDb) FindById(id pkg_entities.ID, ctx context.Context) (*e
 		err := row.Scan(
 			&user.ID,
 			&user.Name,
-			&user.LastName,
-			&user.CPF,
-			&user.Email,
+			&lastNameBytes,
+			&cpfBytes,
+			&emailBytes,
 			&user.Password,
 			&user.AccountStatus,
 			&user.Certifier,
@@ -97,52 +99,28 @@ func (r *UserRepositoryDb) FindById(id pkg_entities.ID, ctx context.Context) (*e
 	if err != nil {
 		return nil, errs.Ctx(err, "crdbpgx.ExecuteTx")
 	}
+	user.LastName = string(lastNameBytes)
+	user.CPF = string(cpfBytes)
+	user.Email = string(emailBytes)
+
 	return user, nil
 }
 
-func (r *UserRepositoryDb) FindByEmail(hashEmail string, ctx context.Context) (*entities.User, error) {
-	sql := `SELECT * FROM users WHERE hash_email = $1`
-	var row pgx.Row
-	user := &entities.User{}
-	err := crdbpgx.ExecuteTx(ctx, r.conn, pgx.TxOptions{}, func(tx pgx.Tx) error {
-		row = tx.QueryRow(ctx, sql, hashEmail)
-		err := row.Scan(
-			&user.ID,
-			&user.Name,
-			&user.LastName,
-			&user.CPF,
-			&user.Email,
-			&user.Password,
-			&user.AccountStatus,
-			&user.Certifier,
-			&user.OtpSecret,
-			&user.OtpAuthUrl,
-			&user.OtpEnabled,
-			&user.CreatedAt,
-		)
-		if err != nil {
-			return errs.Ctx(err, "row.Scan")
-		}
-		return nil
-	})
-	if err != nil {
-		return nil, errs.Ctx(err, "crdbpgx.ExecuteTx")
-	}
-	return user, nil
-}
+func (r *UserRepositoryDb) FindByEmail(email string, ctx context.Context) (*entities.User, error) {
+	var lastNameBytes, cpfBytes, emailBytes []byte
 
-func (r *UserRepositoryDb) FindByCpf(hashCPF string, ctx context.Context) (*entities.User, error) {
-	sql := `SELECT * FROM users WHERE hash_cpf = $1`
+	sql := `SELECT * FROM users WHERE decrypt(email, $2, 'aes/pad:pkcs') = $1`
+	encryptedEmail := []byte(email)
 	var row pgx.Row
 	user := &entities.User{}
 	err := crdbpgx.ExecuteTx(ctx, r.conn, pgx.TxOptions{}, func(tx pgx.Tx) error {
-		row = tx.QueryRow(ctx, sql, hashCPF)
+		row = tx.QueryRow(ctx, sql, encryptedEmail, r.key)
 		err := row.Scan(
 			&user.ID,
 			&user.Name,
-			&user.LastName,
-			&user.CPF,
-			&user.Email,
+			&lastNameBytes,
+			&cpfBytes,
+			&emailBytes,
 			&user.Password,
 			&user.AccountStatus,
 			&user.Certifier,
@@ -159,6 +137,11 @@ func (r *UserRepositoryDb) FindByCpf(hashCPF string, ctx context.Context) (*enti
 	if err != nil {
 		return nil, errs.Ctx(err, "crdbpgx.ExecuteTx")
 	}
+
+	user.LastName = string(lastNameBytes)
+	user.CPF = string(cpfBytes)
+	user.Email = string(emailBytes)
+
 	return user, nil
 }
 
