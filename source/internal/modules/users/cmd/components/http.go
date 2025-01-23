@@ -20,7 +20,7 @@ func Http(
 	userHandlers *handlers.UserHandler,
 ) {
 	// tokenAuth := config.GetTokenAuth()
-	// jwtExpiresIn := config.GetEnvInt("jwt", "expiredIn")
+	jwtExpiresIn := config.GetEnvInt("jwt", "expiredIn")
 
 	router := router.NewRouter()
 	userRouter := routers.NewUserRouter(userHandlers, router)
@@ -38,7 +38,7 @@ func Http(
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.WithValue("jwt", config.GetTokenAuth()))
-	// r.Use(middleware.WithValue("JwtExpiresIn", jwtExpiresIn))
+	r.Use(middleware.WithValue("JwtExpiresIn", jwtExpiresIn))
 
 	userRouter.InitializeUserRoutes(r)
 }

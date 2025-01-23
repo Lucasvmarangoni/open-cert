@@ -16,8 +16,7 @@ type UserInput struct {
 
 
 type AuthenticationInput struct {
-	CPF      string `json:"cpf" valid:"matches(^[0-9]{3}\\.[0-9]{3}\\.[0-9]{3}-[0-9]{2}$)"`
-	Email    string `json:"email" valid:"email"`
+	Email    string `json:"email" valid:"required,email"`
 	Password string `json:"password" valid:"required"`
 }
 
