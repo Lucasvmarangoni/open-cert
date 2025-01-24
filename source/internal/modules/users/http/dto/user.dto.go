@@ -23,3 +23,13 @@ type AuthenticationInput struct {
 type GetJWTOutput struct {
 	AccessToken string `json:"access_token" valid:"-"`
 }
+
+
+type OTPInput struct {
+	Token string `json:"token" valid:"length(6),numeric"`
+}
+
+type OTPOutput struct {
+	Base32     string `json:"base32" valid:"required"`
+	OtpauthUrl string `json:"otpauth_url" valid:"required"`
+}

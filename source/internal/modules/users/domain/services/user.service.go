@@ -7,8 +7,10 @@ import (
 	"certifications/pkg/cache"
 	"certifications/pkg/queue"
 	"certifications/pkg/security"
+	"encoding/json"
 
 	"github.com/Lucasvmarangoni/logella/err"
+	"github.com/rs/zerolog/log"
 	"github.com/streadway/amqp"
 )
 
@@ -71,6 +73,21 @@ func (u *UserService) returnCachedUserIfExists() (*entities.User, bool) {
 	}
 	return nil, false
 }
+
+func (u *UserService) getCache(key string) *entities.User {
+	item, err := u.Memcached.Get(key)
+	if err == nil && item != nil {
+		var cachedUser entities.User
+		err = json.Unmarshal(item.Value, &cachedUser)
+		if err == nil {
+			return &cachedUser
+		} else {
+			log.Error().Err(errs.Ctx(err, "json.Unmarshal")).Msg("Get User cache error")
+		}
+	}
+	return nil
+}
+	
 
 func (u *UserService) decrypt(user *entities.User) error {
 

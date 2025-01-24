@@ -46,8 +46,8 @@ func (r *TableRepositoryDb) initUserTable(ctx context.Context) error {
 			password TEXT NOT NULL,		
 			account_status SMALLINT NOT NULL,
 			certifier BOOL NOT NULL DEFAULT FALSE,
-			otp_secret TEXT,
-			otp_auth_url TEXT,			
+			otp_secret BYTEA,
+			otp_auth_url BYTEA,			
 			otp_enabled BOOL,
 			created_at TIMESTAMP NOT NULL			
 		)`)
