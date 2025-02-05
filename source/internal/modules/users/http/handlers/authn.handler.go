@@ -1,19 +1,17 @@
 package handlers
 
 import (
+	"certifications/internal/middlewares"
 	"certifications/internal/modules/users/http/dto"
 	"certifications/pkg/validate"
 	"encoding/json"
 	"fmt"
 	"net/http"
 
-	errs "github.com/Lucasvmarangoni/logella/err"
+	"github.com/Lucasvmarangoni/logella/err"
 	"github.com/asaskevich/govalidator"
-	"github.com/go-chi/chi"
 	"github.com/go-chi/jwtauth"
 
-	// "github.com/go-chi/chi"
-	// "github.com/go-chi/jwtauth"
 	"github.com/rs/zerolog/log"
 )
 
@@ -27,50 +25,42 @@ import (
 // @Success      200
 // @Failure      400
 // @Router       /authn/create [post]
-func (u *UserHandler) Create(w http.ResponseWriter, r *http.Request) {
+func (u *UsersHandler) Create(w http.ResponseWriter, r *http.Request) {
 	var user dto.UserInput
+	requestID := middlewares.GetRequestID(r.Context())
 
 	err := json.NewDecoder(r.Body).Decode(&user)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]string{
-			"status":  "BadRequest",
-			"message": fmt.Sprintf("%v", err),
+			"status":     errs.Status[http.StatusBadRequest],
+			"message":    fmt.Sprintf("%v", err),
+			"request_id": requestID,
 		})
 		return
 	}
-
-	err = validate.ValidatePassword(user.Password)
-	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{
-			"status":  "BadRequest",
-			"message": fmt.Sprintf("Valid password is required. %v", err),
-		})
-		return
-	}
-
 	_, err = govalidator.ValidateStruct(user)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
+		w.WriteHeader(errs.Assertion(err).Code)
 		json.NewEncoder(w).Encode(map[string]string{
-			"status":  "BadRequest",
-			"message": fmt.Sprintf("%v", err),
+			"status":     errs.Status[errs.Assertion(err).Code],
+			"message":    fmt.Sprintf("%v", errs.Assertion(err).ToClient()),
+			"request_id": requestID,
 		})
 		return
 	}
 
 	err = u.userService.Create(user.Name, user.LastName, user.CPF, user.Email, user.Password)
 	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
+		w.WriteHeader(errs.Assertion(err).Code)
 		json.NewEncoder(w).Encode(map[string]string{
-			"status":  "BadRequest",
-			"message": fmt.Sprintf("%v", err),
+			"status":     errs.Status[errs.Assertion(err).Code],
+			"message":    fmt.Sprintf("%v", errs.Assertion(err).ToClient()),
+			"request_id": requestID,
 		})
-		log.Error().Stack().Err(errs.Stack()).Msg("Error create user")
+		log.Error().Stack().Err(errs.Assertion(err).Stack()).Msgf("error create user. | (%s)", requestID)
 		return
 	}
 	w.WriteHeader(http.StatusCreated)
@@ -87,41 +77,65 @@ func (u *UserHandler) Create(w http.ResponseWriter, r *http.Request) {
 // @Failure      400  {object}  string  "Both email and CPF are required for authentication."
 // @Failure      401  {object}  string  "Unauthorized."
 // @Router       /authn/jwt [post]
-func (u *UserHandler) Authentication(w http.ResponseWriter, r *http.Request) {
-	jwt := r.Context().Value("jwt").(*jwtauth.JWTAuth)
-	jwtExpiresIn := r.Context().Value("JwtExpiresIn").(int)
+func (u *UsersHandler) Authentication(w http.ResponseWriter, r *http.Request) {
 	var user dto.AuthenticationInput
+	requestID := middlewares.GetRequestID(r.Context())
 
 	err := json.NewDecoder(r.Body).Decode(&user)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		log.Error().Err(errs.Stack()).Msg("Error decode request")
+		json.NewEncoder(w).Encode(map[string]string{
+			"status":     "bad_request",
+			"message":    "Invalid JSON format",
+			"request_id": requestID,
+		})
+		log.Error().Err(errs.Assertion(err).Stack()).Msgf("error decode request. | (%s)", requestID)
 		return
 	}
 
 	err = validate.ValidatePassword(user.Password)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
+		w.WriteHeader(errs.Assertion(err).Code)
 		json.NewEncoder(w).Encode(map[string]string{
-			"status":  "BadRequest",
-			"message": fmt.Sprintf("Valid password is required. %v", err),
+			"status":     errs.Status[errs.Assertion(err).Code],
+			"message":    fmt.Sprintf("%v", errs.Assertion(err).ToClient()),
+			"request_id": requestID,
 		})
 		return
 	}
 
-	tokenString, err := u.userService.Authn(user.Email, user.Password, jwt, jwtExpiresIn)
+	authdata, err := u.userService.Authn(user.Email, user.Password)
 	if err != nil {
-		w.WriteHeader(http.StatusUnauthorized)
-		log.Error().Stack().Err(errs.Stack()).Msg("Error authenticate user")
+		w.WriteHeader(errs.Assertion(err).Code)
+		json.NewEncoder(w).Encode(map[string]string{
+			"status":     errs.Status[errs.Assertion(err).Code],
+			"message":    fmt.Sprintf("%v", errs.Assertion(err).ToClient()),
+			"request_id": requestID,
+		})
+		log.Error().Stack().Err(errs.Assertion(err).Stack()).Msgf("error authenticate user. | (%s)", requestID)
 		return
 	}
 
-	accessToken := dto.GetJWTOutput{AccessToken: tokenString}
+	if authdata.IsTemporaryToken {
+		response := dto.GetJWTOutput{
+			AccessToken:      authdata.Token,
+			TwoAuthnRequirid: true,
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(response)
+		return
+	}
+
+	response := dto.GetJWTOutput{
+		AccessToken:      authdata.Token,
+		TwoAuthnRequirid: authdata.IsTemporaryToken,
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(accessToken)
+	json.NewEncoder(w).Encode(response)
 }
 
 // Authentication godoc
@@ -132,16 +146,18 @@ func (u *UserHandler) Authentication(w http.ResponseWriter, r *http.Request) {
 // @Success      200  {object}  dto.OTPOutput
 // @Failure 	 500 {object} map[string]string "Error response"
 // @Router       /totp/generate [get]
-func (u *UserHandler) TwoFactorAuthn(w http.ResponseWriter, r *http.Request) {
+func (u *UsersHandler) TwoFactorAuthn(w http.ResponseWriter, r *http.Request) {
 	var response dto.OTPOutput
+	requestID := middlewares.GetRequestID(r.Context())
 
 	id, err := u.GetSub(w, r)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
+		w.WriteHeader(errs.Assertion(err).Code)
 		json.NewEncoder(w).Encode(map[string]string{
-			"status":  "StatusInternalServerError",
-			"message": fmt.Sprintf("%v", err),
+			"status":     errs.Status[errs.Assertion(err).Code],
+			"message":    fmt.Sprintf("%v", errs.Assertion(err).ToClient()),
+			"request_id": requestID,
 		})
 		return
 	}
@@ -149,18 +165,19 @@ func (u *UserHandler) TwoFactorAuthn(w http.ResponseWriter, r *http.Request) {
 	otpResponse, err := u.userService.GenerateTOTP(id)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
+		w.WriteHeader(errs.Assertion(err).Code)
 		json.NewEncoder(w).Encode(map[string]string{
-			"status":  "StatusInternalServerError",
-			"message": fmt.Sprintf("%v", err),
+			"status":     errs.Status[errs.Assertion(err).Code],
+			"message":    fmt.Sprintf("%v", errs.Assertion(err).ToClient()),
+			"request_id": requestID,
 		})
-		log.Error().Err(errs.Stack()).Msg("Error generate totp")
+		log.Error().Err(errs.Assertion(err).Stack()).Msgf("error generate totp. | (%s)", requestID)
 		return
 	}
-
 	response = dto.OTPOutput{
-		Base32:     otpResponse.Base32,
-		OtpauthUrl: otpResponse.Otpauth_url,
+		Base32:      otpResponse.Base32,
+		OtpauthUrl:  otpResponse.Otpauth_url,
+		AccessToken: otpResponse.AccessToken,
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
@@ -177,16 +194,18 @@ func (u *UserHandler) TwoFactorAuthn(w http.ResponseWriter, r *http.Request) {
 // @Failure 	 500 {object} map[string]string "Error response"
 // @Failure 	 400
 // @Router       /totp/verify/{is_validate} [post]
-func (u *UserHandler) TwoFactorVerify(w http.ResponseWriter, r *http.Request) {
+func (u *UsersHandler) TwoFactorVerify(w http.ResponseWriter, r *http.Request) {
 	var totpToken dto.OTPInput
+	requestID := middlewares.GetRequestID(r.Context())
 
 	id, err := u.GetSub(w, r)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
+		w.WriteHeader(errs.Assertion(err).Code)
 		json.NewEncoder(w).Encode(map[string]string{
-			"status":  "StatusInternalServerError",
-			"message": fmt.Sprintf("%v", err),
+			"status":     errs.Status[errs.Assertion(err).Code],
+			"message":    fmt.Sprintf("%v", errs.Assertion(err).ToClient()),
+			"request_id": requestID,
 		})
 		return
 	}
@@ -195,27 +214,34 @@ func (u *UserHandler) TwoFactorVerify(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		log.Error().Err(errs.Stack()).Msg("Error decode request")
+		json.NewEncoder(w).Encode(map[string]string{
+			"status":     errs.Status[http.StatusBadRequest],
+			"message":    fmt.Sprintf("%v", err),
+			"request_id": requestID,
+		})
+		log.Error().Err(errs.Assertion(err).Stack()).Msgf("error decode request. | (%s)", requestID)
 		return
 	}
 
-	isValidate := chi.URLParam(r, "is_validate")
-	if isValidate == "" {
-		isValidate = "false"
-	}
-	err = u.userService.VerifyTOTP(id, totpToken.Token, isValidate)
+	authdata, err := u.userService.VerifyTOTP(id, totpToken.Token)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
+		w.WriteHeader(errs.Assertion(err).Code)
 		json.NewEncoder(w).Encode(map[string]string{
-			"status":  "StatusInternalServerError",
-			"message": fmt.Sprintf("%v", err),
+			"status":     errs.Status[errs.Assertion(err).Code],
+			"message":    fmt.Sprintf("%v", errs.Assertion(err).ToClient()),
+			"request_id": requestID,
 		})
-		log.Error().Err(errs.Stack()).Msg("Error validate totp")
+		log.Error().Err(errs.Assertion(err).Stack()).Msgf("error validate totp. | (%s)", requestID)
 		return
 	}
+	response := dto.GetJWTOutput{
+		AccessToken:      authdata.Token,
+		TwoAuthnRequirid: authdata.IsTemporaryToken,
+	}
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]bool{"otp_verified": true})
+	json.NewEncoder(w).Encode(response)
 }
 
 // Authentication godoc
@@ -226,14 +252,17 @@ func (u *UserHandler) TwoFactorVerify(w http.ResponseWriter, r *http.Request) {
 // @Success      200  {object}  map[string]bool "otp_disabled"
 // @Failure 	 500 {object} map[string]string "Error response"
 // @Router       /totp/disable [patch]
-func (u *UserHandler) TwoFactorDisable(w http.ResponseWriter, r *http.Request) {
+func (u *UsersHandler) TwoFactorDisable(w http.ResponseWriter, r *http.Request) {
+	requestID := middlewares.GetRequestID(r.Context())
+
 	id, err := u.GetSub(w, r)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
+		w.WriteHeader(errs.Assertion(err).Code)
 		json.NewEncoder(w).Encode(map[string]string{
-			"status":  "StatusInternalServerError",
-			"message": fmt.Sprintf("%v", err),
+			"status":     errs.Status[errs.Assertion(err).Code],
+			"message":    fmt.Sprintf("%v", errs.Assertion(err).ToClient()),
+			"request_id": requestID,
 		})
 		return
 	}
@@ -241,28 +270,27 @@ func (u *UserHandler) TwoFactorDisable(w http.ResponseWriter, r *http.Request) {
 	err = u.userService.DisableOTP(id)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
+		w.WriteHeader(errs.Assertion(err).Code)
 		json.NewEncoder(w).Encode(map[string]string{
-			"status":  "StatusInternalServerError",
-			"message": fmt.Sprintf("%v", err),
+			"status":     errs.Status[errs.Assertion(err).Code],
+			"message":    fmt.Sprintf("%v", errs.Assertion(err).ToClient()),
+			"request_id": requestID,
 		})
-		log.Error().Err(errs.Stack()).Msg("Error disable two factor authentication")
+		log.Error().Err(errs.Assertion(err).Stack()).Msgf("error disable two factor authentication. | (%s)", requestID)
 		return
 	}
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]bool{"otp_disabled": true})
 }
 
-func (u *UserHandler) GetSub(w http.ResponseWriter, r *http.Request) (string, error) {
+func (u *UsersHandler) GetSub(w http.ResponseWriter, r *http.Request) (string, error) {
 	_, claims, err := jwtauth.FromContext(r.Context())
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		return "", errs.Ctx(err, "jwtauth.FromContext")
+		return "", errs.Wrap(err, "jwtauth.FromContext", http.StatusInternalServerError)
 	}
 	id, ok := claims["sub"].(string)
 	if !ok {
-		w.WriteHeader(http.StatusInternalServerError)
-		return "", errs.Ctx(err, `claims["sub"].(string)`)
+		return "", errs.Wrap(err, `claims["sub"].(string)`, http.StatusInternalServerError)
 	}
 	return id, nil
 }

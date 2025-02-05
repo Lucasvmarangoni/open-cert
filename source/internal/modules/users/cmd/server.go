@@ -4,8 +4,6 @@ import (
 	"certifications/config"
 	database_connection "certifications/internal/infra"
 	"certifications/internal/modules/users/cmd/components"
-	"certifications/internal/modules/users/domain/services"
-	"certifications/internal/modules/users/http/handlers"
 	"context"
 	"net/http"
 	"time"
@@ -26,7 +24,6 @@ func init() {
 	db.User = config.GetEnvString("database", "user")
 	db.Password = config.ReadSecretString(config.GetEnvString("database", "password"))
 	db.SSLMode = config.GetEnvString("database", "ssl_mode")
-	
 }
 
 func main() {
@@ -36,20 +33,23 @@ func main() {
 	conn, err := components.Database(ctx, db)
 	errs.FailOnErrLog(err, "Database(ctx)", "Failed exec Database")
 
-	usersRepository := components.NewRepositoriesFactory(conn)
+	repository := components.NewRepositoriesFactory(conn)
 
-	messageChannel, returnChannel, rabbitMQ, ch := components.Queues(ctx, usersRepository.UserRepository)
-	defer ch.Close()
+	queueFactory := components.NewQueueFactory(ctx, repository.UserRepository)
+	defer queueFactory.Ch.Close()
 
 	cacheFactory := components.NewCacheFactory()
 
-	userService := services.NewUserService(usersRepository.UserRepository, rabbitMQ, messageChannel, returnChannel, cacheFactory.UserCache)
-
-	userHandler := handlers.NewUserHandler(userService)
-
+	services := components.NewServiceFactory(
+		repository,
+		cacheFactory,
+		queueFactory.RabbitMQ,
+		queueFactory.CreateMessageChannel,
+		queueFactory.CreateReturnChannel,
+	)
 	r := chi.NewRouter()
 
-	components.Http(r, userHandler)
+	components.Http(r, services.UserService, services.CertifierService)
 
 	err = http.ListenAndServe(":8000", r)
 	errs.FailOnErrLog(err, "http.ListenAndServe", "Failed server listen")

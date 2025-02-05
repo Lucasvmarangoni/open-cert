@@ -4,7 +4,7 @@ import (
 	"context"
 	"os"
 
-	"github.com/Lucasvmarangoni/logella/err"
+	errs "github.com/Lucasvmarangoni/logella/err"
 	"github.com/jackc/pgx/v5"
 	"github.com/rs/zerolog/log"
 )
@@ -41,16 +41,15 @@ func (cfg *Config) Connect(ctx context.Context) (*pgx.Conn, error) {
 	var err error
 	url := "postgresql://" + cfg.User + /* ":" + cfg.Password */ "@roach1:26257,roach2:26258,roach3:26259/" + cfg.DbName + "?sslmode=" + cfg.SSLMode
 
-
 	cfg.Db, err = pgx.ParseConfig(url)
 	if err != nil {
-		return nil, errs.Ctx(err, "pgx.ParseConfig(url)")
+		return nil, errs.Wrap(err, "pgx.ParseConfig(url)", errs.GetHTTPStatusFromPgError(err))
 	}
 
 	cfg.Db.RuntimeParams["application_name"] = "financial_file_manager"
 	conn, err := pgx.ConnectConfig(ctx, cfg.Db)
 	if err != nil {
-		return nil, errs.Ctx(err, "pgx.ConnectConfig")
+		return nil, errs.Wrap(err, "pgx.ConnectConfig", errs.GetHTTPStatusFromPgError(err))
 	}
 	return conn, nil
 }

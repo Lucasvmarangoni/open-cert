@@ -2,6 +2,7 @@ package entities
 
 import (
 	"fmt"
+	"net/http"
 	"time"
 
 	errs "github.com/Lucasvmarangoni/logella/err"
@@ -20,7 +21,7 @@ func isStartBeforeEnding(start, ending time.Time) error {
 func Validate[T any](data T) error {
 	_, err := govalidator.ValidateStruct(data)
 	if err != nil {
-		return errs.Ctx(err, "govalidator.ValidateStruct")
+		return errs.Wrap(err, "govalidator.ValidateStruct", http.StatusBadRequest)
 	}
 	return nil
 }

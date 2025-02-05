@@ -3,29 +3,17 @@ package handlers
 import (
 	"certifications/internal/modules/users/domain/services"
 	"context"
-	go_err "errors"
-	"regexp"
 )
 
-type UserHandler struct {
-	userService *services.UserService
-	ctx         context.Context
+type UsersHandler struct {
+	userService      *services.UserService
+	certifierService *services.CertifierService
+	ctx              context.Context
 }
 
-func NewUserHandler(userService *services.UserService) *UserHandler {
-	return &UserHandler{
-		userService: userService,
+func NewUserHandler(userService *services.UserService, certifierService *services.CertifierService) *UsersHandler {
+	return &UsersHandler{
+		userService:      userService,
+		certifierService: certifierService,
 	}
-}
-
-func (u *UserHandler) validateNameAndLastname(name, lastname *string) error {
-	nameRegex := regexp.MustCompile(`^[a-zA-Z ]+$`)
-
-	if *name != "" && !nameRegex.MatchString(*name) {
-		return go_err.New("invalid name format")
-	}
-	if *lastname != "" && !nameRegex.MatchString(*lastname) {
-		return go_err.New("invalid last name format")
-	}
-	return nil
 }

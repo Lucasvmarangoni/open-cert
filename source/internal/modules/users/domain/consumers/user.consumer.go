@@ -6,8 +6,9 @@ import (
 	"certifications/pkg/queue"
 	"context"
 	"encoding/json"
+	"net/http"
 
-	"github.com/Lucasvmarangoni/logella/err"
+	errs "github.com/Lucasvmarangoni/logella/err"
 	"github.com/rs/zerolog/log"
 	"github.com/streadway/amqp"
 )
@@ -32,13 +33,13 @@ func (m *UsersConsumeMessages) UserConsumer(messageChannel chan amqp.Delivery, r
 		var user entities.User
 		err := json.Unmarshal(message.Body, &user)
 		if err != nil {
-			returnChannel <- errs.Ctx(err, "json.Unmarshal")
+			returnChannel <- errs.Wrap(err, "json.Unmarshal", http.StatusInternalServerError)
 			continue
 		}
 
 		err = m.Repository.Insert(&user, context.Background())
 		if err != nil {
-			returnChannel <- errs.Ctx(err, "Repository.Insert")
+			returnChannel <- errs.Assertion(err).Context("Repository.Insert")
 			continue
 		} else {
 			returnChannel <- nil

@@ -4,6 +4,7 @@ WORKDIR /app
 
 COPY config/ ./config
 COPY pkg/ ./pkg
+COPY internal/middlewares/ ./internal/middlewares
 COPY internal/modules/users/ ./internal/modules/users
 COPY internal/infra/ ./internal/infra
 COPY go.mod .

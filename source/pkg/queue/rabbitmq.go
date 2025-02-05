@@ -2,8 +2,9 @@ package queue
 
 import (
 	"certifications/config"
+	"net/http"
 
-	"github.com/Lucasvmarangoni/logella/err"
+	errs "github.com/Lucasvmarangoni/logella/err"
 	"github.com/rs/zerolog/log"
 	"github.com/streadway/amqp"
 )
@@ -94,7 +95,7 @@ func (r *RabbitMQ) Consume(messageChannel chan amqp.Delivery, routingKey string)
 			messageChannel <- message
 		}
 		if err := r.Channel.Close(); err != nil {
-			log.Error().Err(errs.Ctx(err, "Failed to close RabbitMQ channel")).Send()
+			log.Error().Str("context", "r.Channel.Close").Err(err).Msg("Failed to close RabbitMQ channel")
 		} else {
 			log.Info().Str("context", "RabbitMQ").Msg("RabbitMQ channel closed gracefully")
 		}
@@ -117,7 +118,7 @@ func (r *RabbitMQ) Publish(message string, contentType string, exchange string, 
 		},
 	)
 	if err != nil {
-		return errs.Ctx(err, "Failed to publish message")
+		return errs.Wrap(err, "Failed to publish message", http.StatusInternalServerError)
 	}
 	return nil
 }

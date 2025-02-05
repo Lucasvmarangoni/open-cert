@@ -2,6 +2,7 @@ package entities
 
 import (
 	"certifications/pkg/entities"
+	"net/http"
 	"time"
 
 	errs "github.com/Lucasvmarangoni/logella/err"
@@ -20,7 +21,7 @@ type Experiences struct {
 func (e *Experiences) NewExperience(user_id entities.ID, title, company, description string, start, ending time.Time) (*Experiences, error) {
 	err := isStartBeforeEnding(start, ending)
 	if err != nil {
-		return nil, errs.Ctx(err, "isStartBeforeEnding")
+		return nil, errs.Wrap(err, "isStartBeforeEnding", http.StatusBadRequest)
 	}
 
 	experience := Experiences{
@@ -35,7 +36,7 @@ func (e *Experiences) NewExperience(user_id entities.ID, title, company, descrip
 
 	err = Validate(experience)
 	if err != nil {
-		return nil, errs.Ctx(err, "experience.Validate")
+		return nil, errs.Assertion(err).Context("experience.Validate")
 	}
 	return &experience, nil
 }

@@ -1,27 +1,26 @@
 package components
 
 import (
-	"certifications/internal/modules/users/domain/entities"
 	"certifications/internal/modules/users/domain/services"
-	"certifications/internal/modules/users/infra/repositories"
-	"certifications/pkg/cache"
 	"certifications/pkg/queue"
 
 	"github.com/streadway/amqp"
 )
 
 type ServiceFactory struct {
-	UserService *services.UserService
+	UserService      *services.UserService
+	CertifierService *services.CertifierService
 }
 
-func NewServiceFactory[T any](
-	userRepository *repositories.UserRepositoryDb,
+func NewServiceFactory(
+	repositories *UsersRespositoryFactory,
+	memcached *UserCacheFactory,
 	rabbitMQ queue.IRabbitMQ,
 	messageChannel chan amqp.Delivery,
 	returnChannel chan error,
-	memcached cache.Mencacher[*entities.User],
 ) *ServiceFactory {
 	return &ServiceFactory{
-		UserService: services.NewUserService(userRepository, rabbitMQ, messageChannel, returnChannel, memcached),
+		UserService:      services.NewUserService(repositories.UserRepository, rabbitMQ, messageChannel, returnChannel, memcached.UserCache),
+		CertifierService: services.NewCertifierService(repositories.CertifierRepository, memcached.CertifierCache),
 	}
 }

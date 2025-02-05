@@ -4,26 +4,27 @@ import (
 	"certifications/config"
 	"certifications/internal/modules/users/domain/entities"
 	"encoding/json"
+	"net/http"
 	"sync"
 
-	"github.com/Lucasvmarangoni/logella/err"
+	errs "github.com/Lucasvmarangoni/logella/err"
 )
 
 func (u *UserService) Create(name, lastName, cpf, email, password string) error {
 
 	newUser, err := entities.NewUser(name, lastName, cpf, email, password)
 	if err != nil {
-		return errs.Ctx(err, "entities.NewUser")
+		return errs.Assertion(err).Context("entities.NewUser")
 	}
 
 	userJSON, err := json.Marshal(newUser)
 	if err != nil {
-		return errs.Ctx(err, "json.Marshal")
+		return errs.Wrap(err, "json.Marshal", http.StatusInternalServerError)
 	}
 
 	err = u.RabbitMQ.Publish(string(userJSON), "application/json", config.GetEnvString("rabbitMQ", "exchange"), config.GetEnvString("rabbitMQ", "queue_user"), config.GetEnvString("rabbitMQ", "routingkey_userCreate"))
 	if err != nil {
-		return errs.Ctx(err, "RabbitMQ.Publish")
+		return errs.Assertion(err).Context("RabbitMQ.Publish")
 	}
 
 	var wg sync.WaitGroup
@@ -34,10 +35,9 @@ func (u *UserService) Create(name, lastName, cpf, email, password string) error 
 	}()
 	wg.Wait()
 	if err != nil {
-		return errs.Ctx(err, "UserConsumer")
+		return errs.Assertion(err).Context("UserConsumer")
 	}
-
-	u.setToMemcacheIfNotNil(newUser)
+	u.setToMemcacheIfNotNil(*newUser)
 
 	return nil
 }

@@ -7,6 +7,7 @@ volumes:
   roach2:
   roach3:
 
+
 secrets:
   rabbitmq_pass:
     file: ./secrets/rabbitmq_pass.txt
@@ -72,6 +73,8 @@ services:
       DATABASE_SYM_ENCRYPT: ${DATABASE_SYM_ENCRYPT}
       JWT_EXPIREDIN: ${JWT_EXPIREDIN}
       JWT_SECRET: /run/secrets/jwt_secret
+      JWT_SECRET_TEMP: ${JWT_SECRET_TEMP}
+      JWT_EXPIREDIN_TEMP: ${JWT_EXPIREDIN_TEMP}
       AUTHZ_ADMIN_1: /run/secrets/authz_admin_1
       AUTHZ_READ_1: /run/secrets/authz_read_1
       AUTHZ_MAX_ADMIN: /run/secrets/authz_max_admin
@@ -79,7 +82,7 @@ services:
       RABBITMQ_PASS: /run/secrets/rabbitmq_pass
       DATABASE_PASSWORD: /run/secrets/database_password
       SECURITY_AES_KEY: /run/secrets/security_aes_key
-      PASSWORD_REDIS: ${PASSWORD_REDIS}
+      PASSWORD_REDIS: ${PASSWORD_REDIS}      
     secrets:
       - rabbitmq_pass
       - database_password
@@ -103,25 +106,25 @@ services:
     command: go run cmd/server.go
 
   roach1:
-      image: cockroachdb/cockroach:v24.3.3
-      container_name: roach1
-      hostname: roach1
-      environment:
-        COCKROACH_CHANNEL: stable
-        COCKROACH_DATABASE: ${DATABASE_NAME}
-        COCKROACH_USER: ${DATABASE_USER}
-        COCKROACH_PASSWORD: /run/secrets/database_password
-      secrets:
-        - database_password
-      ports:
-        - "26257:26257"
-        - "8080:8080"
-      volumes:
-        - "roach1:/cockroach/cockroach-data"
-      networks:
-        - ce     
-      command: >
-        start --advertise-addr=roach1:26357 --http-addr=roach1:8080 --listen-addr=roach1:26357 --sql-addr=roach1:26257 --insecure --join=roach1:26357,roach2:26357,roach3:26357 
+    image: cockroachdb/cockroach:v24.3.3
+    container_name: roach1
+    hostname: roach1
+    environment:
+      COCKROACH_CHANNEL: stable
+      COCKROACH_DATABASE: ${DATABASE_NAME}
+      COCKROACH_USER: ${DATABASE_USER}
+      COCKROACH_PASSWORD: /run/secrets/database_password
+    secrets:
+      - database_password
+    ports:
+      - "26257:26257"
+      - "8080:8080"
+    volumes:
+      - "roach1:/cockroach/cockroach-data"
+    networks:
+      - ce
+    command: >
+      start --advertise-addr=roach1:26357 --http-addr=roach1:8080 --listen-addr=roach1:26357 --sql-addr=roach1:26257 --insecure --join=roach1:26357,roach2:26357,roach3:26357 
 
   roach2:
     image: cockroachdb/cockroach:v24.3.3
@@ -140,7 +143,7 @@ services:
     volumes:
       - "roach2:/cockroach/cockroach-data"
     networks:
-      - ce    
+      - ce
     command: >
       start --advertise-addr=roach2:26357 --http-addr=roach2:8081 --listen-addr=roach2:26357 --sql-addr=roach2:26258 --insecure --join=roach1:26357,roach2:26357,roach3:26357
 
@@ -161,7 +164,7 @@ services:
     volumes:
       - "roach3:/cockroach/cockroach-data"
     networks:
-      - ce   
+      - ce
     command: >
       start --advertise-addr=roach3:26357 --http-addr=roach3:8082 --listen-addr=roach3:26357 --sql-addr=roach3:26259 --insecure --join=roach1:26357,roach2:26357,roach3:26357
 
@@ -197,10 +200,10 @@ services:
     restart: always
     networks:
       - ce
-    security_opt:
-      - no-new-privileges
-    cap_drop:
-      - all
+    # security_opt:
+    #   - no-new-privileges
+    # cap_drop:
+    #   - all
     command:
       - memcached
       - -m 64
@@ -222,8 +225,8 @@ services:
       - "6379:6379"
     networks:
       - ce
-    security_opt:
-      - no-new-privileges
+    # security_opt:
+    #   - no-new-privileges
     restart: always
     environment:
       PASSWORD_REDIS: ${PASSWORD_REDIS}

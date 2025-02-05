@@ -1,43 +1,79 @@
 package services
 
 import (
+	"certifications/config"
 	"certifications/internal/modules/users/domain/entities"
+	"net/http"
 	"time"
 
 	errs "github.com/Lucasvmarangoni/logella/err"
-	"github.com/go-chi/jwtauth"
 )
 
-func (u *UserService) Authn(email, password string, jwt *jwtauth.JWTAuth, jwtExpiresIn int) (string, error) {
+type authData struct {
+	Token            string
+	IsTemporaryToken bool
+}
+
+func (u *UserService) Authn(email, password string) (authData, error) {
 	var user *entities.User
-	var err error	
+	var err error
 
 	user, err = u.FindByEmail(email, nil)
-
 	if err != nil {
-		return "", errs.Ctx(err, "u.FindByEmail")
+		return authData{}, errs.Assertion(err).Context("u.FindByEmail")
 	}
 
 	err = user.ValidateHashPassword(password)
 	if err != nil {
-		return "", errs.Ctx(err, "user.ValidateHashPassword")
+		return authData{}, errs.Assertion(err).Context("user.ValidateHashPassword")
 	}
 	user.Password = ""
 
-	tokenString, err := u.generateJWT(user, jwt, jwtExpiresIn)
+	if user.OtpEnabled {
+		tokenString, err := u.generateTempJWT(user)
+		if err != nil {
+			errs.Assertion(err).Context("u.generateJWT")
+		}
+		return authData{
+			Token:            tokenString,
+			IsTemporaryToken: true,
+		}, nil
+	}
+
+	tokenString, err := u.generateJWT(user)
 	if err != nil {
-		errs.Ctx(err, "u.generateJWT")
+		errs.Assertion(err).Context("u.generateJWT")
+	}
+	return authData{
+		Token:            tokenString,
+		IsTemporaryToken: false,
+	}, nil
+}
+
+func (u *UserService) generateJWT(user *entities.User) (string, error) {
+	tokenAuth := config.GetTokenAuth()
+	jwtExpiresIn := config.GetEnvInt("jwt", "expiredIn")
+
+	_, tokenString, err := tokenAuth.Encode(map[string]interface{}{
+		"sub": user.ID.String(),
+		"exp": time.Now().Add(time.Minute * time.Duration(jwtExpiresIn)).Unix(),
+	})
+	if err != nil {
+		return "", errs.Wrap(err, "jwt.Encode", http.StatusInternalServerError)
 	}
 	return tokenString, nil
 }
 
-func (u *UserService) generateJWT(user *entities.User, jwt *jwtauth.JWTAuth, jwtExpiresIn int) (string, error) {
-	_, tokenString, err := jwt.Encode(map[string]interface{}{
+func (u *UserService) generateTempJWT(user *entities.User) (string, error) {
+	tokenAuthTemp := config.GetTokenAuthTemp()
+	jwtExpiresInTemp := config.GetEnvInt("jwt", "expiredIn_temp")
+
+	_, tokenString, err := tokenAuthTemp.Encode(map[string]interface{}{
 		"sub": user.ID.String(),
-		"exp": time.Now().Add(time.Second * time.Duration(jwtExpiresIn)).Unix(),
+		"exp": time.Now().Add(time.Minute * time.Duration(jwtExpiresInTemp)).Unix(),
 	})
 	if err != nil {
-		errs.Ctx(err, "jwt.Encode")
+		return "", errs.Wrap(err, "jwt.Encode", http.StatusInternalServerError)
 	}
 	return tokenString, nil
 }

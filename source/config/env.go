@@ -1,17 +1,19 @@
 package config
 
 type database struct {
-	name            string `mapstructure:"DATABASE_NAME"`
-	user            string `mapstructure:"DATABASE_USER"`
-	password        string `mapstructure:"DATABASE_PASSWORD"`
-	ssl_mode        string `mapstructure:"DATABASE_SSL_MODE"`
-	port            string `mapstructure:"DATABASE_PORT"`
+	name        string `mapstructure:"DATABASE_NAME"`
+	user        string `mapstructure:"DATABASE_USER"`
+	password    string `mapstructure:"DATABASE_PASSWORD"`
+	ssl_mode    string `mapstructure:"DATABASE_SSL_MODE"`
+	port        string `mapstructure:"DATABASE_PORT"`
 	sym_encrypt string `mapstructure:"DATABASE_SYM_ENCRYPT"`
 }
 
 type jwt struct {
-	secret    string `mapstructure:"JWT_SECRET"`
-	expiredIn string `mapstructure:"JWT_EXPIREDIN"`
+	secret         string `mapstructure:"JWT_SECRET"`
+	secret_temp    string `mapstructure:"JWT_SECRET_TEMP"`
+	expiredIn      string `mapstructure:"JWT_EXPIREDIN"`
+	expiredIn_temp string `mapstructure:"JWT_EXPIREDIN_TEMP"`
 }
 
 type rabbitMQ struct {

@@ -2,9 +2,10 @@ package entities
 
 import (
 	"certifications/pkg/entities"
+	"net/http"
 	"time"
 
-	"github.com/Lucasvmarangoni/logella/err"
+	errs "github.com/Lucasvmarangoni/logella/err"
 )
 
 type Qualification struct {
@@ -19,7 +20,7 @@ type Qualification struct {
 func (q *Qualification) NewQualification(user_id entities.ID, organization, degree string, start, ending time.Time) (*Qualification, error) {
 	err := isStartBeforeEnding(start, ending)
 	if err != nil {
-		return nil, errs.Ctx(err, "isStartBeforeEnding")
+		return nil, errs.Wrap(err, "isStartBeforeEnding", http.StatusBadRequest)
 	}
 
 	qualification := Qualification{
@@ -33,7 +34,7 @@ func (q *Qualification) NewQualification(user_id entities.ID, organization, degr
 
 	err = Validate(qualification)
 	if err != nil {
-		return nil, errs.Ctx(err, "qualification.Validate")
+		return nil, errs.Assertion(err).Context("qualification.Validate")
 	}
 	return &qualification, nil
 }

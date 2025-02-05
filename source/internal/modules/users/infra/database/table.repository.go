@@ -3,7 +3,7 @@ package database
 import (
 	"context"
 
-	"github.com/Lucasvmarangoni/logella/err"
+	errs "github.com/Lucasvmarangoni/logella/err"
 	"github.com/jackc/pgx/v5"
 	"github.com/rs/zerolog/log"
 )
@@ -25,12 +25,12 @@ func NewTableRepository(db pgx.Tx) *TableRepositoryDb {
 func (r *TableRepositoryDb) InitTables(ctx context.Context) error {
 	err := r.initUserTable(ctx)
 	if err != nil {
-		return errs.Ctx(err, "initUserTable")
+		return errs.Wrap(err, "r.initUserTable", errs.GetHTTPStatusFromPgError(err))
 	}
 
-	err = r.createdPgcrypto(ctx)
+	err = r.initCertifierTable(ctx)
 	if err != nil {
-		return errs.Ctx(err, "initUserTable")
+		return errs.Wrap(err, "r.initCertifierTable", errs.GetHTTPStatusFromPgError(err))
 	}
 	return nil
 }
@@ -52,19 +52,25 @@ func (r *TableRepositoryDb) initUserTable(ctx context.Context) error {
 			created_at TIMESTAMP NOT NULL			
 		)`)
 	if err != nil {
-		return errs.Ctx(err, "r.tx.Exec")
+		return errs.Wrap(err, "r.tx.Exec", errs.GetHTTPStatusFromPgError(err))
 	}
 	log.Info().Str("context", "TableRepository").Msg("Database - Created users table successfully.")
 	return nil
 }
 
-func (r *TableRepositoryDb) createdPgcrypto(ctx context.Context) error {
+func (r *TableRepositoryDb) initCertifierTable(ctx context.Context) error {
 
-	_, err := r.tx.Exec(ctx, `CREATE EXTENSION IF NOT EXISTS pgcrypto;
-`)
+	_, err := r.tx.Exec(ctx, `CREATE TABLE IF NOT EXISTS certifiers (
+			user_id UUID PRIMARY KEY NOT NULL,
+			description VARCHAR(5000) NOT NULL,
+			validated BOOL NOT NULL DEFAULT FALSE,
+			balance NUMERIC(15,2) NOT NULL DEFAULT 0.00,
+			reserved NUMERIC(15,2) NOT NULL DEFAULT 0.00,
+			account_status SMALLINT NOT NULL	
+		)`)
 	if err != nil {
-		return errs.Ctx(err, "r.tx.Exec")
+		return errs.Wrap(err, "r.tx.Exec", errs.GetHTTPStatusFromPgError(err))
 	}
-	log.Info().Str("context", "TableRepository").Msg("Database - Created pgcrypto extension.")
+	log.Info().Str("context", "TableRepository").Msg("Database - Created certifers table successfully.")
 	return nil
 }

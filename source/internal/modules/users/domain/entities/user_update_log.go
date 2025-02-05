@@ -28,7 +28,7 @@ func NewUserUpdateLog(user_id entities.ID,
 
 	err := Validate(user_update_log)
 	if err != nil {
-		return nil, errs.Ctx(err, "user.Validate")
+		return nil, errs.Assertion(err).Context("user_update_log.Validate")
 	}
 
 	return user_update_log, nil

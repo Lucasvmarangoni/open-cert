@@ -6,13 +6,15 @@ import (
 )
 
 type UserCacheFactory struct {
-	UserCache *cache.Memcached[*entities.User]
+	UserCache      *cache.Memcached[entities.User]
+	CertifierCache *cache.Memcached[*entities.Certifier]
 }
 
 func NewCacheFactory() *UserCacheFactory {
 
-	userCacheFactory :=&UserCacheFactory{
-		UserCache: instances[*entities.User](),
+	userCacheFactory := &UserCacheFactory{
+		UserCache:      instances[entities.User](),
+		CertifierCache: instances[*entities.Certifier](),
 	}
 	return userCacheFactory
 }

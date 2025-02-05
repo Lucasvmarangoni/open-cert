@@ -2,6 +2,8 @@ package components
 
 import (
 	"certifications/config"
+	"certifications/internal/middlewares"
+	"certifications/internal/modules/users/domain/services"
 	"certifications/internal/modules/users/http/handlers"
 	"certifications/internal/modules/users/http/routers"
 
@@ -10,20 +12,22 @@ import (
 	"github.com/go-chi/chi"
 	"github.com/go-chi/chi/middleware"
 	"github.com/go-chi/cors"
-	// "github.com/go-chi/chi/middleware"
-	// "github.com/go-chi/cors"
-	// "github.com/go-chi/jwtauth"
+	"github.com/go-chi/jwtauth"
 )
 
 func Http(
 	r *chi.Mux,
-	userHandlers *handlers.UserHandler,
+	userService *services.UserService,
+	certifierService *services.CertifierService,
 ) {
-	// tokenAuth := config.GetTokenAuth()
-	jwtExpiresIn := config.GetEnvInt("jwt", "expiredIn")
+	tokenAuth := config.GetTokenAuth()
+	tokenAuthTemp := config.GetTokenAuthTemp()
+	redisPassword := config.GetEnvString("password", "redis")
+
+	userHandler := handlers.NewUserHandler(userService, certifierService)
 
 	router := router.NewRouter()
-	userRouter := routers.NewUserRouter(userHandlers, router)
+	userRouter := routers.NewUserRouter(userHandler, router)
 
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   []string{"https://localhost"},
@@ -36,9 +40,25 @@ func Http(
 
 	// r.Use(middlewares.WAF())
 	r.Use(middleware.Logger)
-	r.Use(middleware.Recoverer)
-	r.Use(middleware.WithValue("jwt", config.GetTokenAuth()))
-	r.Use(middleware.WithValue("JwtExpiresIn", jwtExpiresIn))
+	r.Use(middleware.Recoverer)	
+	r.Use(middlewares.RequestIDMiddleware)
 
 	userRouter.InitializeUserRoutes(r)
+
+	r.Route("/2fa", func(r chi.Router) {
+		r.Use(jwtauth.Verifier(tokenAuthTemp))
+		r.Use(jwtauth.Authenticator)
+		// r.Use(mw.Authorizer())
+		r.Use(middlewares.NewUserRateLimit("redis:6379", redisPassword).Handler())
+		userRouter.UserTOTPVerifyRoute(r)
+	})
+
+	r.Route("/", func(r chi.Router) {
+		r.Use(jwtauth.Verifier(tokenAuth))
+		r.Use(jwtauth.Authenticator)
+		// r.Use(mw.Authorizer())
+		r.Use(middlewares.NewUserRateLimit("redis:6379", redisPassword).Handler())
+		userRouter.UserRoutes(r)
+		userRouter.CertifierRoute(r)
+	})
 }

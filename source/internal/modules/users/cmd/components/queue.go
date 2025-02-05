@@ -10,14 +10,26 @@ import (
 	"github.com/streadway/amqp"
 )
 
-func Queues(ctx context.Context, userRepository *repositories.UserRepositoryDb) (chan amqp.Delivery, chan error, *queue.RabbitMQ, *amqp.Channel) {
+type UserQueueFactory struct {
+	RabbitMQ             *queue.RabbitMQ
+	Ch                   *amqp.Channel
+	CreateMessageChannel chan amqp.Delivery
+	CreateReturnChannel  chan error
+}
+
+func NewQueueFactory(ctx context.Context, userRepository *repositories.UserRepositoryDb) UserQueueFactory {
 	rabbitMQ := queue.NewRabbitMQ()
 	userConsumeMessages := consumers.NewConsumeMessages(ctx, userRepository, rabbitMQ)
 	ch := rabbitMQ.Connect()
 
 	messageChannel, returnChannel := userConsumer(userConsumeMessages, rabbitMQ)
 
-	return messageChannel, returnChannel, rabbitMQ, ch
+	return UserQueueFactory{
+		RabbitMQ:             rabbitMQ,
+		Ch:                   ch,
+		CreateMessageChannel: messageChannel,
+		CreateReturnChannel:  returnChannel,
+	}
 }
 
 func userConsumer(

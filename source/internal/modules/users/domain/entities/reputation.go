@@ -3,7 +3,7 @@ package entities
 import (
 	"certifications/pkg/entities"
 
-	"github.com/Lucasvmarangoni/logella/err"
+	errs "github.com/Lucasvmarangoni/logella/err"
 )
 
 type Reputation struct {
@@ -24,7 +24,7 @@ func NewReputation(user_id entities.ID, rating int, comment string) (*Reputation
 
 	err := Validate(reputation)
 	if err != nil {
-		return nil, errs.Ctx(err, "reputation.Validate")
+		return nil, errs.Assertion(err).Context("reputation.Validate")
 	}
 	return reputation, nil
 }

@@ -7,56 +7,55 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"io"
+	"net/http"
 
 	"errors"
 
-	"github.com/Lucasvmarangoni/logella/err"
+	errs "github.com/Lucasvmarangoni/logella/err"
 )
 
 func Encrypt(plaintext string, key string) (string, error) {
 	keyDecoded, err := hex.DecodeString(key)
 	if err != nil {
-		return "", errs.Ctx(err, "hex.DecodeString")
+		return "", errs.Wrap(err, "hex.DecodeString", http.StatusInternalServerError)
 	}
 
 	block, err := aes.NewCipher(keyDecoded)
 	if err != nil {
-		return "", err
+		return "", errs.Wrap(err, "aes.NewCipher", http.StatusInternalServerError)
 	}
 
 	ciphertext := make([]byte, aes.BlockSize+len([]byte(plaintext)))
 	iv := ciphertext[:aes.BlockSize]
 	if _, err := io.ReadFull(rand.Reader, iv); err != nil {
-		return "", errs.Ctx(err, "io.ReadFull")
+		return "", errs.Wrap(err, "io.ReadFull", http.StatusInternalServerError)
 	}
-
 	mode := cipher.NewCFBEncrypter(block, iv)
 	mode.XORKeyStream(ciphertext[aes.BlockSize:], []byte(plaintext))
 
 	return base64.StdEncoding.EncodeToString(ciphertext), nil
 }
 
-
 func Decrypt(ciphertext string, key string) (string, error) {
 
 	keyDecoded, err := hex.DecodeString(key)
 	if err != nil {
-		return "", errs.Ctx(err, "hex.DecodeString")
+		return "", errs.Wrap(err, "hex.DecodeString", http.StatusInternalServerError)
 	}
 
 	data, err := base64.StdEncoding.DecodeString(ciphertext)
 	if err != nil {
-		return "", errs.Ctx(err, "base64.StdEncoding.DecodeString")
+		return "", errs.Wrap(err, "base64.StdEncoding.DecodeString", http.StatusInternalServerError)
 	}
 
 	block, err := aes.NewCipher(keyDecoded)
 	if err != nil {
-		return "", errs.Ctx(err, "aes.NewCipher")
+		return "", errs.Wrap(err, "aes.NewCipher", http.StatusInternalServerError)
 	}
 
 	if len(data) < aes.BlockSize {
 		err = errors.New("invalid ciphertext block size")
-		return "", errs.Ctx(err, "len(data) < aes.BlockSize")
+		return "", errs.Wrap(err, "len(data) < aes.BlockSize", http.StatusInternalServerError)
 	}
 
 	iv := data[:aes.BlockSize]
@@ -67,4 +66,3 @@ func Decrypt(ciphertext string, key string) (string, error) {
 
 	return string(data), nil
 }
-
